@@ -1,0 +1,48 @@
+name: BFL Auto TTS Generator
+
+on:
+  push:
+    paths:
+      - 'alerts.json' # ทำงานเมื่อมีการอัปเดตไฟล์นี้เท่านั้น
+
+jobs:
+  generate-audio:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Install Tools (Edge-TTS, jq, FFmpeg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq ffmpeg
+          pip install edge-tts
+
+      - name: Generate TTS Audio
+        run: |
+          # 1. ดึงข้อความล่าสุดและ ID จาก alerts.json
+          LATEST_MSG=$(jq -r '.alerts[-1].message' alerts.json)
+          LATEST_ID=$(jq -r '.alerts[-1].id' alerts.json)
+          
+          echo "Processing ID: $LATEST_ID with message: $LATEST_MSG"
+          
+          # 2. แปลงข้อความเป็นเสียง (ใช้เสียง Microsoft Guy แทน Mike เพราะทำงานบน Cloud ได้เสถียรกว่า)
+          edge-tts --voice en-US-GuyNeural --text "$LATEST_MSG" --write-media raw_audio.mp3
+          
+          # 3. ใช้ FFmpeg สร้างโฟลเดอร์และใส่ฟิลเตอร์วิทยุสื่อสาร (Telephone Filter) เป็น .webm
+          mkdir -p announcements
+          ffmpeg -y -i raw_audio.mp3 -af "highpass=f=300,lowpass=f=3000,volume=3.0" announcements/bfl-Announcement-$LATEST_ID.webm
+          
+          # ลบไฟล์ดิบ
+          rm raw_audio.mp3
+
+      - name: Commit and Push New Audio
+        run: |
+          git config --global user.name "BFL System Bot"
+          git config --global user.email "bot@bflparty.local"
+          git add announcements/*
+          git commit -m "Auto-generated TTS for BFL Alert ID" || echo "No changes to commit"
+          git push
