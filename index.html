@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BFL Party - Live Warning Center</title>
+    <style>
+        body {
+            background-color: #0d0d0d;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px;
+            border-bottom: 2px solid #ff0000;
+            background: #1a0000;
+            border-radius: 8px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            background: #008000;
+            border-radius: 12px;
+            font-size: 0.8em;
+            margin-top: 5px;
+        }
+        .banner {
+            background: #260000;
+            border: 1px solid #ff0000;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(255, 0, 0, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+        }
+        .history-list {
+            margin-top: 30px;
+        }
+        .card {
+            background: #1a1a1a;
+            border-left: 4px solid #ff0000;
+            padding: 15px;
+            margin-bottom: 12px;
+            border-radius: 4px;
+        }
+        .card-time { color: #888; font-size: 0.85em; }
+        .card-title { color: #ff4d4d; font-size: 1.2em; font-weight: bold; margin: 5px 0; }
+        .card-msg { font-size: 1em; color: #ddd; }
+        .btn-start {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: #ff0000;
+            color: #fff;
+            border: none;
+            font-weight: bold;
+            font-size: 1.1em;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <button id="startBtn" class="btn-start" onclick="enableAudio()">🔴 คลิกที่นี่เพื่อเปิดระบบรับฟังประกาศ LIVE</button>
+
+    <div class="header">
+        <h1>BFL PARTY WARNING CENTER</h1>
+        <div class="status-badge" id="status">กำลังเชื่อมต่อระบบ...</div>
+    </div>
+
+    <!-- ส่วนแสดงประกาศล่าสุด -->
+    <div class="banner" id="activeBanner">
+        <div class="card-time" id="liveTime">--:--:--</div>
+        <div class="card-title" id="liveTitle">SYSTEM ALERT</div>
+        <div class="card-msg" id="liveMsg">กำลังรอรับประกาศ...</div>
+    </div>
+
+    <h2>📜 ประวัติการประกาศย้อนหลัง</h2>
+    <div class="history-list" id="history">
+        <!-- รายการย้อนหลังจะมาขึ้นตรงนี้ -->
+    </div>
+
+    <script>
+        let lastProcessedId = 0;
+        let audioEnabled = false;
+
+        function enableAudio() {
+            audioEnabled = true;
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('status').innerText = '🟢 ระบบทำงานแล้ว (กำลังฟังประกาศ LIVE)';
+            checkAlerts();
+            setInterval(checkAlerts, 4000); // เช็กประกาศใหม่ทุกๆ 4 วินาที
+        }
+
+        async function checkAlerts() {
+            try {
+                const res = await fetch('alerts.json?t=' + Date.now());
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.alerts || data.alerts.length === 0) return;
+
+                // อัปเดตประวัติย้อนหลัง
+                renderHistory(data.alerts);
+
+                const latest = data.alerts[data.alerts.length - 1];
+                
+                // ตั้งค่า ID เริ่มต้นครั้งแรก
+                if (lastProcessedId === 0) {
+                    lastProcessedId = latest.id;
+                    return;
+                }
+
+                // เจอประกาศใหม่!
+                if (latest.id > lastProcessedId) {
+                    lastProcessedId = latest.id;
+                    triggerNewAlert(latest);
+                }
+            } catch (err) {
+                console.error("Fetch error:", err);
+            }
+        }
+
+        function triggerNewAlert(alert) {
+            // แสดง Banner บนหน้าเว็บ
+            const banner = document.getElementById('activeBanner');
+            document.getElementById('liveTime').innerText = alert.time;
+            document.getElementById('liveTitle').innerText = "🚨 " + alert.title;
+            document.getElementById('liveMsg').innerText = alert.message;
+            banner.style.display = 'block';
+
+            if (!audioEnabled) return;
+
+            // 1. เล่นเสียง Intro (BFL-Partys-alert.webm)
+            const introAudio = new Audio('BFL-Partys-alert.webm?t=' + Date.now());
+            
+            introAudio.play().then(() => {
+                console.log("Intro played successfully.");
+            }).catch(e => console.log("Intro playback error:", e));
+
+            // 2. พอเสียง Intro จบ เล่นเสียง TTS (.webm)
+            introAudio.onended = function() {
+                const ttsAudio = new Audio(`announcements/bfl-Announcement-${alert.id}.webm?t=` + Date.now());
+                
+                // ระบบพยายามดึงไฟล์ TTS (เผื่อ GitHub Actions กำลังประมวลผล)
+                let attempts = 0;
+                const playTTS = setInterval(() => {
+                    attempts++;
+                    ttsAudio.play().then(() => {
+                        clearInterval(playTTS);
+                        console.log("TTS played successfully.");
+                    }).catch(() => {
+                        if (attempts > 10) clearInterval(playTTS);
+                    });
+                }, 2000);
+            };
+        }
+
+        function renderHistory(alerts) {
+            const historyDiv = document.getElementById('history');
+            historyDiv.innerHTML = '';
+            
+            // เรียงจากใหม่ไปเก่า
+            const reversed = [...alerts].reverse();
+            reversed.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div class="card-time">⏱️ ${item.time} (ID: ${item.id})</div>
+                    <div class="card-title">${item.title}</div>
+                    <div class="card-msg">${item.message}</div>
+                `;
+                historyDiv.appendChild(card);
+            });
+        }
+    </script>
+</body>
+</html>
