@@ -1,39 +1,49 @@
 <!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BFL Party - Live Warning Center</title>
-    <style>
-        body {
-            background-color: #0d0d0d;
-            color: #ffffff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 20px;
+<html>
+<body>
+    <button id="startBtn" onclick="startSystem()">🔴 เริ่มระบบรับฟัง</button>
+    <div id="status">สถานะ: รอการกดปุ่ม</div>
+    <div id="liveMsg" style="font-size: 30px; font-weight: bold; color: red;"></div>
+    <div id="history"></div>
+
+    <script>
+        let lastId = 0;
+        function startSystem() {
+            document.getElementById('status').innerText = "สถานะ: ทำงานแล้ว (คอยเช็กทุก 4 วินาที)";
+            setInterval(checkAlerts, 4000);
         }
-        .header {
-            text-align: center;
-            padding: 20px;
-            border-bottom: 2px solid #ff0000;
-            background: #1a0000;
-            border-radius: 8px;
+
+        async function checkAlerts() {
+            try {
+                // cache: 'no-store' บังคับให้โหลดไฟล์ใหม่เสมอ ไม่เอาของเก่า
+                const res = await fetch('alerts.json?t=' + Date.now(), { cache: 'no-store' });
+                const data = await res.json();
+                console.log("ได้รับข้อมูลจาก GitHub:", data); // เปิด F12 ดูตรงนี้
+
+                if (data.alerts && data.alerts.length > 0) {
+                    const latest = data.alerts[data.alerts.length - 1];
+                    if (latest.id > lastId) {
+                        lastId = latest.id;
+                        document.getElementById('liveMsg').innerText = "📢 " + latest.message;
+                        
+                        // เล่นเสียง
+                        const audio = new Audio('BFL-Partys-alert.webm?t=' + Date.now());
+                        audio.play().catch(e => console.log("เสียงถูกบล็อก:", e));
+                    }
+                    renderHistory(data.alerts);
+                }
+            } catch (err) {
+                console.error("เกิดข้อผิดพลาด:", err);
+            }
         }
-        .status-badge {
-            display: inline-block;
-            padding: 5px 12px;
-            background: #008000;
-            border-radius: 12px;
-            font-size: 0.8em;
-            margin-top: 5px;
+
+        function renderHistory(alerts) {
+            const h = document.getElementById('history');
+            h.innerHTML = alerts.slice().reverse().map(a => `<p>${a.time}: ${a.message}</p>`).join('');
         }
-        .banner {
-            background: #260000;
-            border: 1px solid #ff0000;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-            display: none;
+    </script>
+</body>
+</html>
             animation: pulse 1.5s infinite;
         }
         @keyframes pulse {
